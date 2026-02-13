@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terry Saves the World - v0.1.5 (Story Update)</title>
+    <style>
+        /* CSS: The "Office Aesthetic" Stylesheet */
+        :root {
+            --bg-teal: #008080;
+            --win-gray: #c0c0c0;
+            --win-blue: #000080;
+            --win-white: #ffffff;
+            --win-dark: #808080;
+            --win-black: #000000;
+        }
+
+        body {
+            background-color: var(--bg-teal);
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            user-select: none; /* No selecting text, get back to work */
+        }
+
+        /* The Main Application Container */
+        #app-container {
+            width: 100%;
+            max-width: 500px;
+            background-color: var(--win-gray);
+            border-top: 2px solid var(--win-white);
+            border-left: 2px solid var(--win-white);
+            border-right: 2px solid var(--win-black);
+            border-bottom: 2px solid var(--win-black);
+            box-shadow: 8px 8px 0px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            padding: 4px;
+        }
+
+        /* The Title Bar */
+        .title-bar {
+            background-color: var(--win-blue);
+            color: var(--win-white);
+            padding: 4px 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .title-btn {
+            background: var(--win-gray);
+            color: black;
+            border: 1px outset white;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            line-height: 18px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        /* Dialogue Section (The "Narrative Interface") */
+        #dialogue-area {
+            background: white;
+            border: 2px inset var(--win-dark);
+            height: 80px;
+            padding: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            line-height: 1.4;
+            overflow-y: auto;
+            color: black;
+        }
+
+        .speaker-zeke { color: #800000; font-weight: bold; }
+        .speaker-terry { color: #000080; font-weight: bold; }
+        .speaker-sys { color: #008000; font-weight: bold; }
+
+        /* The Canvas Container */
+        #canvas-wrapper {
+            display: flex;
+            justify-content: center;
+            background-color: var(--win-gray);
+            border: 3px groove var(--win-white);
+            padding: 10px;
+        }
+
+        canvas {
+            cursor: crosshair; /* Precision clicking required */
+            background-color: #c0c0c0;
+        }
+
+        /* Status Bar at the bottom */
+        .status-bar {
+            margin-top: 8px;
+            border-top: 1px solid var(--win-dark);
+            border-bottom: 1px solid var(--win-white);
+            padding: 4px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Controls hint */
+        .controls-hint {
+            text-align: center;
+            font-size: 10px;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        .credits {
+            text-align: right;
+            font-size: 10px;
+            color: #555;
+            margin-top: 2px;
+            font-style: italic;
+            padding-right: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <!-- Title Bar -->
+        <div class="title-bar">
+            <span>TERRY_SAVES_WORLD.EXE</span>
+            <div class="title-btn" onclick="game.reset()">R</div>
+        </div>
+
+        <!-- Narrative Output -->
+        <div id="dialogue-area">
+            <span class="speaker-sys">SYSTEM:</span> "Booting OfficeOS v3.1... Click screen to acknowledge memo."
+        </div>
+
+        <!-- The Game Viewport -->
+        <div id="canvas-wrapper">
+            <canvas id="gameCanvas" width="400" height="400"></canvas>
+        </div>
+
+        <!-- Status & Stats -->
+        <div class="status-bar">
+            <span id="mines-left">HAZARDS: --</span>
+            <span id="coffee-level">COFFEE: LUKEWARM</span>
+        </div>
+        
+        <div class="controls-hint">
+            LEFT CLICK: Disarm | RIGHT CLICK: File HR Report (Flag)
+        </div>
+        <div class="credits">A game by Juan S. Gutierrez</div>
+    </div>
+
+<script>
+/**
+ * TERRY SAVES THE WORLD - CORE ENGINE
+ * Author: Bob (Lead Dev / Coffee Enthusiast)
+ * Version: 0.9.5 (Story Update)
+ */
+
+class GameEngine {
+    constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.dialogueEl = document.getElementById('dialogue-area');
+        this.minesLeftEl = document.getElementById('mines-left');
+        
+        // Configuration
+        this.GRID_SIZE = 8;
+        this.TOTAL_MINES = 10;
+        this.CELL_SIZE = this.canvas.width / this.GRID_SIZE;
+        
+        // Assets (Colors for numbers)
+        this.colors = [
+            null, 
+            'blue', 'green', 'red', 'purple', 
+            'maroon', 'turquoise', 'black', 'gray'
+        ];
+
+        // Game State
+        this.grid = [];
+        this.gameState = 'INTRO'; // INTRO, PLAYING, GAMEOVER
+        this.firstClick = true;
+        this.flagsPlaced = 0;
+
+        // Bind Inputs
+        this.canvas.addEventListener('mousedown', (e) => this.handleInput(e));
+        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault()); // Block default menu
+
+        // Start
+        this.startIntro();
+    }
+
+    // --- STATE MANAGEMENT ---
+
+    startIntro() {
+        this.gameState = 'INTRO';
+        this.drawIntro();
+        this.updateDialogue("SYSTEM", "New message from MANAGEMENT. Please review immediately.");
+    }
+
+    startGame() {
+        this.gameState = 'PLAYING';
+        this.grid = [];
+        this.firstClick = true;
+        this.flagsPlaced = 0;
+        this.updateDialogue("Zeke", "Prepare for annihilation, office drone! These mines are tax-deductible!");
+        
+        // Initialize empty grid
+        for (let r = 0; r < this.GRID_SIZE; r++) {
+            let row = [];
+            for (let c = 0; c < this.GRID_SIZE; c++) {
+                row.push({
+                    r, c,
+                    isMine: false,
+                    revealed: false,
+                    flagged: false,
+                    neighborCount: 0
+                });
+            }
+            this.grid.push(row);
+        }
+
+        this.updateStats();
+        this.draw();
+    }
+
+    placeMines(excludeR, excludeC) {
+        let mines = 0;
+        while (mines < this.TOTAL_MINES) {
+            let r = Math.floor(Math.random() * this.GRID_SIZE);
+            let c = Math.floor(Math.random() * this.GRID_SIZE);
+
+            // Don't place mine on existing mine OR the first clicked cell
+            if (!this.grid[r][c].isMine && (r !== excludeR || c !== excludeC)) {
+                this.grid[r][c].isMine = true;
+                mines++;
+            }
+        }
+        this.calculateNeighbors();
+    }
+
+    calculateNeighbors() {
+        for (let r = 0; r < this.GRID_SIZE; r++) {
+            for (let c = 0; c < this.GRID_SIZE; c++) {
+                if (this.grid[r][c].isMine) continue;
+                
+                let count = 0;
+                // Check 8 neighbors
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        let nr = r + i;
+                        let nc = c + j;
+                        if (nr >= 0 && nr < this.GRID_SIZE && nc >= 0 && nc < this.GRID_SIZE) {
+                            if (this.grid[nr][nc].isMine) count++;
+                        }
+                    }
+                }
+                this.grid[r][c].neighborCount = count;
+            }
+        }
+    }
+
+    // --- INPUT HANDLING ---
+
+    handleInput(e) {
+        if (this.gameState === 'INTRO') {
+            this.startGame();
+            return;
+        }
+
+        if (this.gameState === 'GAMEOVER') return;
+
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        const c = Math.floor(x / this.CELL_SIZE);
+        const r = Math.floor(y / this.CELL_SIZE);
+
+        if (r >= 0 && r < this.GRID_SIZE && c >= 0 && c < this.GRID_SIZE) {
+            if (e.button === 2) { 
+                // Right Click
+                this.toggleFlag(r, c);
+            } else {
+                // Left Click
+                this.revealCell(r, c);
+            }
+        }
+        this.draw();
+    }
+
+    toggleFlag(r, c) {
+        const cell = this.grid[r][c];
+        if (cell.revealed) return;
+
+        cell.flagged = !cell.flagged;
+        this.flagsPlaced += cell.flagged ? 1 : -1;
+        this.updateStats();
+        
+        // Narrative Flavor
+        if (cell.flagged) {
+            this.updateDialogue("Terry", "Adding this to the safety log...");
+        }
+    }
+
+    revealCell(r, c) {
+        const cell = this.grid[r][c];
+        
+        if (cell.revealed || cell.flagged) return;
+
+        // First click safety mechanism
+        if (this.firstClick) {
+            this.placeMines(r, c);
+            this.firstClick = false;
+        }
+
+        cell.revealed = true;
+
+        if (cell.isMine) {
+            this.triggerGameOver(false);
+        } else {
+            if (cell.neighborCount === 0) {
+                this.floodFill(r, c);
+            }
+            this.checkWinCondition();
+        }
+    }
+
+    floodFill(r, c) {
+        for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+                let nr = r + i;
+                let nc = c + j;
+                if (nr >= 0 && nr < this.GRID_SIZE && nc >= 0 && nc < this.GRID_SIZE) {
+                    let neighbor = this.grid[nr][nc];
+                    if (!neighbor.revealed && !neighbor.flagged) {
+                        this.revealCell(nr, nc);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- RENDERING ---
+
+    draw() {
+        if (this.gameState === 'INTRO') {
+            this.drawIntro();
+            return;
+        }
+
+        // Clear screen
+        this.ctx.fillStyle = "#c0c0c0";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        for (let r = 0; r < this.GRID_SIZE; r++) {
+            for (let c = 0; c < this.GRID_SIZE; c++) {
+                this.drawCell(r, c);
+            }
+        }
+    }
+
+    drawIntro() {
+        // Draw standard beige background
+        this.ctx.fillStyle = "#c0c0c0";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        // Draw a "White Paper" or "Memo" in the middle
+        this.ctx.fillStyle = "#ffffff";
+        this.ctx.fillRect(40, 40, 320, 320);
+        this.ctx.strokeStyle = "#808080";
+        this.ctx.strokeRect(40, 40, 320, 320);
+
+        // Header Blue bar
+        this.ctx.fillStyle = "#000080";
+        this.ctx.fillRect(40, 40, 320, 30);
+        
+        this.ctx.fillStyle = "#ffffff";
+        this.ctx.font = "bold 14px Courier New";
+        this.ctx.textAlign = "left";
+        this.ctx.fillText("INCOMING TRANSMISSION", 50, 60);
+
+        // Text Content
+        this.ctx.fillStyle = "black";
+        this.ctx.font = "12px Courier New"; // Smaller font for the memo
+        
+        let lines = [
+            "FROM: HUMAN RESOURCES",
+            "TO: TERRY (JUNIOR ASSOC.)",
+            "RE: URGENT - ALIEN INVASION",
+            "---------------------------",
+            "Terry,",
+            "",
+            "An alien entity 'ZEKE' has",
+            "placed 'Quantum Destabilizers'",
+            "in the office grid.",
+            "",
+            "Please disarm them before",
+            "the 2:00 PM client meeting.",
+            "",
+            "NOTE: Hazard Pay is DENIED.",
+            "",
+            "[CLICK TO START]"
+        ];
+
+        let startY = 90;
+        let lineHeight = 16;
+        for (let i = 0; i < lines.length; i++) {
+            this.ctx.fillText(lines[i], 50, startY + (i * lineHeight));
+        }
+    }
+
+    drawCell(r, c) {
+        const cell = this.grid[r][c];
+        const x = c * this.CELL_SIZE;
+        const y = r * this.CELL_SIZE;
+        const s = this.CELL_SIZE;
+
+        if (!cell.revealed) {
+            this.drawBevel(x, y, s, true);
+            if (cell.flagged) {
+                this.drawText("🚩", x + s/2, y + s/1.5);
+            }
+        } else {
+            this.ctx.strokeStyle = "#808080";
+            this.ctx.strokeRect(x, y, s, s);
+            
+            if (cell.isMine) {
+                if (this.gameState === 'GAMEOVER') this.ctx.fillStyle = "red";
+                else this.ctx.fillStyle = "#c0c0c0";
+                
+                this.ctx.fillRect(x+1, y+1, s-2, s-2);
+                this.drawText("💣", x + s/2, y + s/1.5);
+            } else if (cell.neighborCount > 0) {
+                this.drawText(
+                    cell.neighborCount, 
+                    x + s/2, 
+                    y + s/1.5, 
+                    this.colors[cell.neighborCount],
+                    "bold 24px Courier New"
+                );
+            }
+        }
+    }
+
+    drawBevel(x, y, size, raised) {
+        const light = "#ffffff";
+        const shadow = "#808080";
+        const face = "#c0c0c0";
+
+        this.ctx.fillStyle = face;
+        this.ctx.fillRect(x, y, size, size);
+
+        // Top/Left Highlight
+        this.ctx.fillStyle = raised ? light : shadow;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y);
+        this.ctx.lineTo(x + size, y);
+        this.ctx.lineTo(x + size - 4, y + 4);
+        this.ctx.lineTo(x + 4, y + 4);
+        this.ctx.lineTo(x + 4, y + size - 4);
+        this.ctx.lineTo(x, y + size);
+        this.ctx.fill();
+
+        // Bottom/Right Shadow
+        this.ctx.fillStyle = raised ? shadow : light;
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + size, y + size);
+        this.ctx.lineTo(x, y + size);
+        this.ctx.lineTo(x + 4, y + size - 4);
+        this.ctx.lineTo(x + size - 4, y + size - 4);
+        this.ctx.lineTo(x + size - 4, y + 4);
+        this.ctx.lineTo(x + size, y);
+        this.ctx.fill();
+    }
+
+    drawText(text, x, y, color = "black", font = "24px Arial") {
+        this.ctx.fillStyle = color;
+        this.ctx.font = font;
+        this.ctx.textAlign = "center";
+        this.ctx.fillText(text, x, y);
+    }
+
+    // --- GAME LOGIC & NARRATIVE ---
+
+    checkWinCondition() {
+        let safeCellsUnrevealed = 0;
+        for (let r = 0; r < this.GRID_SIZE; r++) {
+            for (let c = 0; c < this.GRID_SIZE; c++) {
+                if (!this.grid[r][c].isMine && !this.grid[r][c].revealed) {
+                    safeCellsUnrevealed++;
+                }
+            }
+        }
+
+        if (safeCellsUnrevealed === 0) {
+            this.triggerGameOver(true);
+        }
+    }
+
+    triggerGameOver(win) {
+        this.gameState = 'GAMEOVER';
+        
+        // Reveal all mines
+        for (let r = 0; r < this.GRID_SIZE; r++) {
+            for (let c = 0; c < this.GRID_SIZE; c++) {
+                if (this.grid[r][c].isMine) {
+                    this.grid[r][c].revealed = true;
+                }
+            }
+        }
+        this.draw();
+
+        if (win) {
+            this.updateDialogue("Terry", "Grid clear. I'm taking my 15-minute break now.");
+            setTimeout(() => this.updateDialogue("Zeke", "Curse you! I'll tell my mom!"), 2000);
+        } else {
+            this.updateDialogue("Zeke", "BOOM! Human error detected! Earth is cancelled!");
+            setTimeout(() => this.updateDialogue("Terry", "Great. That's coming out of my paycheck."), 2000);
+        }
+    }
+
+    updateStats() {
+        this.minesLeftEl.innerText = `HAZARDS: ${Math.max(0, this.TOTAL_MINES - this.flagsPlaced)}`;
+    }
+
+    updateDialogue(speaker, text) {
+        let cssClass = "";
+        if (speaker === "Zeke") cssClass = "speaker-zeke";
+        else if (speaker === "Terry") cssClass = "speaker-terry";
+        else cssClass = "speaker-sys";
+        
+        this.dialogueEl.innerHTML = `<span class="${cssClass}">${speaker}:</span> "${text}"`;
+    }
+
+    reset() {
+        this.startGame();
+    }
+}
+
+// Instantiate Global Game Instance
+const game = new GameEngine();
+
+</script>
+</body>
+</html>
