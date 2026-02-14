@@ -231,6 +231,8 @@ class GameEngine {
         this.longPressTimer = null;
         this.isLongPress = false;
         this.touchStartTime = 0;
+        this.lastTouchX = null;
+        this.lastTouchY = null;
 
         // Load Save Data
         this.loadProgress();
@@ -283,20 +285,21 @@ class GameEngine {
     // --- INPUT HANDLING ---
 
     handleTouchStart(x, y) {
-        if (this.gameState !== 'PLAYING') return;
-
         this.isLongPress = false;
         this.lastTouchX = x;
         this.lastTouchY = y;
         
-        // Start Timer (500ms for long press)
-        this.longPressTimer = setTimeout(() => {
-            this.isLongPress = true;
-            this.handleInput(x, y, true); // Trigger right-click/flag logic
-            
-            // Visual feedback (Vibrate if supported)
-            if (navigator.vibrate) navigator.vibrate(50);
-        }, 500);
+        // Only enable long press detection if we are actually playing
+        if (this.gameState === 'PLAYING') {
+            // Start Timer (500ms for long press)
+            this.longPressTimer = setTimeout(() => {
+                this.isLongPress = true;
+                this.handleInput(x, y, true); // Trigger right-click/flag logic
+                
+                // Visual feedback (Vibrate if supported)
+                if (navigator.vibrate) navigator.vibrate(50);
+            }, 500);
+        }
     }
 
     handleTouchEnd(e) {
