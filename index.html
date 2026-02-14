@@ -20,6 +20,7 @@
             font-family: 'Courier New', Courier, monospace;
             margin: 0;
             height: 100vh;
+            height: 100dvh; /* Dynamic Viewport Height for mobile browsers */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -30,15 +31,15 @@
 
         #app-container {
             width: 100%;
-            max-width: 500px;
-            height: 100vh;
-            max-height: 800px;
+            max-width: 500px; /* Kept narrow for phone screens */
+            height: 100%;
+            max-height: 850px;
             background-color: var(--win-gray);
             border: 2px solid var(--win-white);
             box-shadow: 8px 8px 0px rgba(0,0,0,0.5);
             display: flex;
             flex-direction: column;
-            padding: 4px;
+            padding: 2px; /* Reduced padding */
             box-sizing: border-box;
         }
 
@@ -52,7 +53,8 @@
             align-items: center;
             font-weight: bold;
             letter-spacing: 1px;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
+            font-size: 14px;
             flex-shrink: 0;
         }
 
@@ -71,10 +73,10 @@
         #dialogue-area {
             background: white;
             border: 2px inset var(--win-dark);
-            height: 60px;
-            padding: 8px;
-            margin-bottom: 10px;
-            font-size: 13px;
+            height: 50px; /* Reduced height */
+            padding: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
             line-height: 1.3;
             overflow-y: auto;
             color: black;
@@ -93,7 +95,7 @@
             align-items: center;
             background-color: var(--win-gray);
             border: 3px groove var(--win-white);
-            padding: 5px;
+            padding: 2px;
             overflow: hidden;
             position: relative;
         }
@@ -107,7 +109,7 @@
 
         /* Status Bar */
         .status-bar {
-            margin-top: 8px;
+            margin-top: 6px;
             border-top: 1px solid var(--win-dark);
             border-bottom: 1px solid var(--win-white);
             padding: 4px;
@@ -123,7 +125,7 @@
         .mobile-controls {
             display: flex;
             gap: 10px;
-            margin-top: 5px;
+            margin-top: 4px;
             justify-content: center;
             flex-shrink: 0;
         }
@@ -131,12 +133,12 @@
         .mode-btn {
             background: var(--win-gray);
             border: 2px outset var(--win-white);
-            padding: 8px 16px;
+            padding: 6px 12px;
             font-family: 'Courier New', Courier, monospace;
             font-weight: bold;
-            font-size: 14px;
+            font-size: 12px;
             cursor: pointer;
-            width: 120px;
+            width: 140px;
         }
         
         .mode-btn.active {
@@ -147,7 +149,7 @@
 
         .credits {
             text-align: right;
-            font-size: 10px;
+            font-size: 9px;
             color: #555;
             margin-top: 2px;
             font-style: italic;
@@ -160,12 +162,12 @@
         <!-- Title Bar -->
         <div class="title-bar">
             <span>TERRY_SAVES_WORLD</span>
-            <div class="title-btn" onclick="game.reset()">R</div>
+            <div class="title-btn" onclick="game.hardReset()">R</div>
         </div>
 
         <!-- Narrative Output -->
         <div id="dialogue-area">
-            <span class="speaker-sys">SYSTEM:</span> "Initializing mobile interface... Touch screen to punch in."
+            <span class="speaker-sys">SYSTEM:</span> "Initializing mobile interface... Long press to flag hazards."
         </div>
 
         <!-- Game Viewport -->
@@ -184,14 +186,17 @@
             <span id="mines-left">HAZARDS: --</span>
         </div>
         
-        <div class="credits">Tap to Interact | A game by Juan S. Gutierrez.</div>
+        <div class="credits">Long Press to Flag | A game by Juan S. Gutierrez.</div>
     </div>
 
 <script>
 /**
- * TERRY SAVES THE WORLD - V2.0 (Mobile & Levels)
+ * TERRY SAVES THE WORLD - V2.1 (Long Press & Saves)
  * Lead Dev: Bob
- * Patch Notes: Added touch support, level scaling, and victory confetti.
+ * Patch Notes: 
+ * - Implemented localStorage for job security.
+ * - Added long-press gesture for flagging.
+ * - Adjusted mobile viewport layout.
  */
 
 class GameEngine {
@@ -206,8 +211,8 @@ class GameEngine {
         // Level Configuration
         this.levels = [
             { level: 1, size: 8, mines: 10, name: "CUBICLE", zekeIntro: "Pathetic. You can't even clear your own desk." },
-            { level: 2, size: 10, mines: 18, name: "BREAKROOM", zekeIntro: "I've booby-trapped the donuts, Terry! Give up!" },
-            { level: 3, size: 12, mines: 30, name: "MOTHERSHIP", zekeIntro: "Welcome to my office. The gravity is weird and the rent is terrible." }
+            { level: 2, size: 10, mines: 15, name: "BREAKROOM", zekeIntro: "I've booby-trapped the donuts, Terry! Give up!" },
+            { level: 3, size: 12, mines: 25, name: "MOTHERSHIP", zekeIntro: "Welcome to my office. The gravity is weird and the rent is terrible." }
         ];
         
         this.currentLevelIdx = 0;
@@ -222,6 +227,14 @@ class GameEngine {
         this.confettiParticles = [];
         this.animationFrameId = null;
 
+        // Long Press State
+        this.longPressTimer = null;
+        this.isLongPress = false;
+        this.touchStartTime = 0;
+
+        // Load Save Data
+        this.loadProgress();
+
         // Input Bindings
         this.setupInputs();
 
@@ -229,19 +242,137 @@ class GameEngine {
         this.startIntro();
     }
 
+    loadProgress() {
+        const savedLevel = localStorage.getItem('terry_max_level');
+        if (savedLevel) {
+            const levelIdx = parseInt(savedLevel, 10);
+            if (!isNaN(levelIdx) && levelIdx >= 0 && levelIdx < this.levels.length) {
+                this.currentLevelIdx = levelIdx;
+            }
+        }
+    }
+
+    saveProgress() {
+        localStorage.setItem('terry_max_level', this.currentLevelIdx);
+    }
+
     setupInputs() {
         // Mouse
         this.canvas.addEventListener('mousedown', (e) => this.handleMouse(e));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        // Touch
+        // Touch with Long Press Logic
         this.canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevent scrolling
+            e.preventDefault();
             const touch = e.touches[0];
-            const rect = this.canvas.getBoundingClientRect();
-            // Simulate mouse event structure
-            this.handleInput(touch.clientX, touch.clientY, false);
+            this.handleTouchStart(touch.clientX, touch.clientY);
         }, { passive: false });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault(); // Prevent ghost clicks
+            this.handleTouchEnd(e);
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            // Cancel long press if finger moves too much
+            clearTimeout(this.longPressTimer);
+            this.longPressTimer = null;
+        }, { passive: false });
+    }
+
+    // --- INPUT HANDLING ---
+
+    handleTouchStart(x, y) {
+        if (this.gameState !== 'PLAYING') return;
+
+        this.isLongPress = false;
+        this.lastTouchX = x;
+        this.lastTouchY = y;
+        
+        // Start Timer (500ms for long press)
+        this.longPressTimer = setTimeout(() => {
+            this.isLongPress = true;
+            this.handleInput(x, y, true); // Trigger right-click/flag logic
+            
+            // Visual feedback (Vibrate if supported)
+            if (navigator.vibrate) navigator.vibrate(50);
+        }, 500);
+    }
+
+    handleTouchEnd(e) {
+        clearTimeout(this.longPressTimer); // Cancel timer if released early
+        
+        if (this.isLongPress) {
+            // Already handled by timer, do nothing
+            this.isLongPress = false; 
+            return;
+        }
+
+        // If not a long press, handle as normal tap
+        if (this.lastTouchX !== null) {
+            this.handleInput(this.lastTouchX, this.lastTouchY, false);
+        }
+        
+        this.lastTouchX = null;
+        this.lastTouchY = null;
+    }
+
+    handleMouse(e) {
+        if (e.button === 2) { // Right Click always flags
+            this.handleInput(e.clientX, e.clientY, true);
+        } else {
+            this.handleInput(e.clientX, e.clientY, false);
+        }
+    }
+
+    handleInput(clientX, clientY, isRightClick) {
+        if (this.gameState === 'INTRO') {
+            this.startLevel(this.currentLevelIdx); // Resume from saved level
+            return;
+        }
+
+        if (this.gameState === 'LEVEL_COMPLETE') {
+            this.currentLevelIdx++;
+            this.saveProgress();
+            this.startLevel(this.currentLevelIdx);
+            return;
+        }
+
+        if (this.gameState === 'GAMEOVER') {
+            // Retry Current Level logic
+            this.startLevel(this.currentLevelIdx);
+            return;
+        }
+
+        if (this.gameState === 'VICTORY') {
+            // Reset to 0 after winning game
+            this.currentLevelIdx = 0;
+            this.saveProgress();
+            this.startIntro();
+            return;
+        }
+
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
+
+        const c = Math.floor(x / this.CELL_SIZE);
+        const r = Math.floor(y / this.CELL_SIZE);
+
+        if (r >= 0 && r < this.GRID_SIZE && c >= 0 && c < this.GRID_SIZE) {
+            // Determine action based on Mode OR Right Click OR Long Press
+            const isFlagAction = isRightClick || (this.inputMode === 'FLAG');
+
+            if (isFlagAction) {
+                this.toggleFlag(r, c);
+            } else {
+                this.revealCell(r, c);
+            }
+        }
+        this.draw();
     }
 
     toggleMode() {
@@ -256,12 +387,13 @@ class GameEngine {
         }
     }
 
-    // --- STATE MANAGEMENT ---
+    // --- GAME LOGIC ---
 
     startIntro() {
         this.gameState = 'INTRO';
         this.drawIntro();
-        this.updateDialogue("SYSTEM", "Tap screen to clock in. Don't be late.");
+        const resumeText = this.currentLevelIdx > 0 ? `Resume Lvl ${this.currentLevelIdx + 1}` : "Clock In";
+        this.updateDialogue("SYSTEM", `Tap screen to ${resumeText}. Don't be late.`);
     }
 
     startLevel(levelIdx) {
@@ -270,14 +402,13 @@ class GameEngine {
         
         this.GRID_SIZE = config.size;
         this.TOTAL_MINES = config.mines;
-        // Adjust cell size to fit the fixed canvas 600x600
         this.CELL_SIZE = this.canvas.width / this.GRID_SIZE;
 
         this.gameState = 'PLAYING';
         this.grid = [];
         this.firstClick = true;
         this.flagsPlaced = 0;
-        this.confettiParticles = []; // Clear confetti
+        this.confettiParticles = [];
         cancelAnimationFrame(this.animationFrameId);
 
         this.levelDisplayEl.innerText = `LVL: ${config.level}/3 - ${config.name}`;
@@ -334,53 +465,6 @@ class GameEngine {
         }
     }
 
-    // --- INPUT HANDLING ---
-
-    handleMouse(e) {
-        if (e.button === 2) { // Right Click always flags
-            this.handleInput(e.clientX, e.clientY, true);
-        } else {
-            this.handleInput(e.clientX, e.clientY, false);
-        }
-    }
-
-    handleInput(clientX, clientY, isRightClick) {
-        if (this.gameState === 'INTRO') {
-            this.startLevel(0);
-            return;
-        }
-
-        if (this.gameState === 'LEVEL_COMPLETE') {
-            this.startLevel(this.currentLevelIdx + 1);
-            return;
-        }
-
-        if (this.gameState === 'GAMEOVER' || this.gameState === 'VICTORY') return;
-
-        const rect = this.canvas.getBoundingClientRect();
-        // Calculate scaling factor between CSS pixels and Canvas pixels
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-
-        const x = (clientX - rect.left) * scaleX;
-        const y = (clientY - rect.top) * scaleY;
-
-        const c = Math.floor(x / this.CELL_SIZE);
-        const r = Math.floor(y / this.CELL_SIZE);
-
-        if (r >= 0 && r < this.GRID_SIZE && c >= 0 && c < this.GRID_SIZE) {
-            // Determine action based on Mode or Right Click
-            const isFlagAction = isRightClick || (this.inputMode === 'FLAG');
-
-            if (isFlagAction) {
-                this.toggleFlag(r, c);
-            } else {
-                this.revealCell(r, c);
-            }
-        }
-        this.draw();
-    }
-
     toggleFlag(r, c) {
         const cell = this.grid[r][c];
         if (cell.revealed) return;
@@ -389,7 +473,6 @@ class GameEngine {
         this.flagsPlaced += cell.flagged ? 1 : -1;
         this.updateStats();
         
-        // Random Flavor text
         if (cell.flagged && Math.random() > 0.8) {
             this.updateDialogue("Terry", "That looks like a HR violation.");
         }
@@ -430,8 +513,6 @@ class GameEngine {
         }
     }
 
-    // --- LOGIC & ENDGAME ---
-
     checkWinCondition() {
         let safeCellsUnrevealed = 0;
         for (let r = 0; r < this.GRID_SIZE; r++) {
@@ -448,13 +529,12 @@ class GameEngine {
     }
 
     handleLevelWin() {
-        // Flag all mines for visual clarity
         this.grid.flat().forEach(cell => { if(cell.isMine) cell.flagged = true; });
         this.updateStats();
 
         if (this.currentLevelIdx < this.levels.length - 1) {
             this.gameState = 'LEVEL_COMPLETE';
-            this.updateDialogue("SYSTEM", `LEVEL COMPLETE. Performance: Adequate. Click to proceed to ${this.levels[this.currentLevelIdx+1].name}.`);
+            this.updateDialogue("SYSTEM", `LEVEL COMPLETE. Performance: Adequate. Tap to proceed to ${this.levels[this.currentLevelIdx+1].name}.`);
             this.draw();
         } else {
             this.triggerGameOver(true);
@@ -470,11 +550,16 @@ class GameEngine {
             this.startConfetti();
         } else {
             this.gameState = 'GAMEOVER';
-            // Reveal mines
             this.grid.flat().forEach(cell => { if(cell.isMine) cell.revealed = true; });
             this.draw();
-            this.updateDialogue("Zeke", "BOOM! Back to the mailroom, Terry!");
+            this.updateDialogue("Zeke", `BOOM! Try again? Tap screen to RETRY LEVEL ${this.currentLevelIdx + 1}.`);
         }
+    }
+
+    hardReset() {
+        this.currentLevelIdx = 0;
+        this.saveProgress();
+        this.startIntro();
     }
 
     // --- VISUALS ---
@@ -503,6 +588,14 @@ class GameEngine {
             this.drawText("LEVEL COMPLETE", this.canvas.width/2, this.canvas.height/2, "white", "bold 40px Courier New");
             this.drawText("Tap to Continue", this.canvas.width/2, this.canvas.height/2 + 50, "white", "20px Courier New");
         }
+        
+        // Overlay for Game Over
+        if (this.gameState === 'GAMEOVER') {
+             this.ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+             this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+             this.drawText("TERMINATED", this.canvas.width/2, this.canvas.height/2, "red", "bold 50px Courier New");
+             this.drawText("Tap to Retry Level", this.canvas.width/2, this.canvas.height/2 + 60, "white", "24px Courier New");
+        }
     }
 
     drawCell(r, c) {
@@ -514,7 +607,6 @@ class GameEngine {
         if (!cell.revealed) {
             this.drawBevel(x, y, s, true);
             if (cell.flagged) {
-                // Determine text size based on cell size
                 const fontSize = Math.floor(s * 0.6);
                 this.drawText("🚩", x + s/2, y + s/1.5, "black", `${fontSize}px Arial`);
             }
@@ -551,7 +643,7 @@ class GameEngine {
         this.ctx.fillRect(x, y, size, size);
 
         // Simple Bevel
-        const b = Math.floor(size * 0.1); // Bevel thickness
+        const b = Math.floor(size * 0.1); 
         
         this.ctx.fillStyle = raised ? light : shadow;
         this.ctx.beginPath();
@@ -567,34 +659,28 @@ class GameEngine {
         this.ctx.lineTo(x, y + size);
         this.ctx.fill();
 
-        // Inner Face
         this.ctx.fillStyle = face;
         this.ctx.fillRect(x + b, y + b, size - (2*b), size - (2*b));
     }
 
     drawIntro() {
-        // Draw standard beige background
         this.ctx.fillStyle = "#c0c0c0";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-        // Centering logic for the memo (400x420)
         const memoW = 400;
         const memoH = 420;
         const startX = (this.canvas.width - memoW) / 2;
         const startY = (this.canvas.height - memoH) / 2;
 
-        // Drop shadow for the paper
         this.ctx.fillStyle = "rgba(0,0,0,0.5)";
         this.ctx.fillRect(startX + 8, startY + 8, memoW, memoH);
 
-        // Draw a "White Paper" or "Memo" in the middle
         this.ctx.fillStyle = "#ffffff";
         this.ctx.fillRect(startX, startY, memoW, memoH);
         this.ctx.strokeStyle = "#808080";
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(startX, startY, memoW, memoH);
 
-        // Header Blue bar
         this.ctx.fillStyle = "#000080";
         this.ctx.fillRect(startX, startY, memoW, 40);
         
@@ -603,7 +689,6 @@ class GameEngine {
         this.ctx.textAlign = "left";
         this.ctx.fillText("INCOMING TRANSMISSION", startX + 15, startY + 26);
 
-        // Text Content
         this.ctx.fillStyle = "black";
         this.ctx.font = "14px Courier New"; 
         
@@ -618,12 +703,12 @@ class GameEngine {
             "placed 'Quantum Destabilizers'",
             "in the office grid.",
             "",
-            "Please disarm them before",
-            "the 2:00 PM client meeting.",
+            "Please disarm them.",
             "",
-            "NOTE: Hazard Pay is DENIED.",
+            "NOTE: Progress is Saved.",
+            "Long Press to Flag.",
             "",
-            "[CLICK OR TAP TO START]"
+            "[TAP TO CLOCK IN]"
         ];
 
         let currentY = startY + 70;
@@ -653,12 +738,6 @@ class GameEngine {
         this.dialogueEl.scrollTop = this.dialogueEl.scrollHeight;
     }
 
-    reset() {
-        this.startIntro();
-    }
-
-    // --- CONFETTI SYSTEM ---
-
     startConfetti() {
         this.confettiParticles = [];
         for (let i = 0; i < 150; i++) {
@@ -666,7 +745,7 @@ class GameEngine {
                 x: this.canvas.width / 2,
                 y: this.canvas.height / 2,
                 vx: (Math.random() - 0.5) * 15,
-                vy: (Math.random() - 0.5) * 15 - 5, // Upward bias
+                vy: (Math.random() - 0.5) * 15 - 5,
                 size: Math.random() * 8 + 4,
                 color: `hsl(${Math.random() * 360}, 100%, 50%)`,
                 drag: 0.96,
@@ -678,27 +757,19 @@ class GameEngine {
 
     animateConfetti() {
         if (this.gameState !== 'VICTORY') return;
-
-        // Draw Game first
         this.draw(); 
-
-        // Draw Confetti
         this.confettiParticles.forEach(p => {
             p.x += p.vx;
             p.y += p.vy;
             p.vy += p.gravity;
             p.vx *= p.drag;
-
             this.ctx.fillStyle = p.color;
             this.ctx.fillRect(p.x, p.y, p.size, p.size);
         });
-
-        // Loop
         this.animationFrameId = requestAnimationFrame(() => this.animateConfetti());
     }
 }
 
-// Instantiate
 const game = new GameEngine();
 
 </script>
